@@ -1,9 +1,17 @@
+// config/database.js
 const { Sequelize } = require('sequelize');
 
-// Conexión con PostgreSQL
-const sequelize = new Sequelize('postgresql://databaseproject_owner:npg_OGmYVb1la0Io@ep-rapid-field-a43r0ieo-pooler.us-east-1.aws.neon.tech/databaseproject?sslmode=require', {
-  dialect: 'postgres',
-  logging: false, // Desactivar los logs SQL
-});
+
+const sequelize = new Sequelize(
+  'diagramBD',   
+  'postgres',         
+  '1256',     
+  {
+    host: '127.0.0.1', // o 'localhost'
+    port: 5432,
+    dialect: 'postgres',
+    logging: false,
+  }
+);
 
 module.exports = sequelize;
