@@ -22,7 +22,7 @@ const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000
 // 🔒 Orígenes permitidos (ajusta tu dominio real si tienes frontend en producción)
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
-  // 'https://TU-FRONTEND-PROD.com',
+  'https://diagram-frontend-sf-1-gc4t.vercel.app',
 ]
 
 // CORS para REST
