@@ -1,106 +1,117 @@
 // server.js
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const http = require('http');
-const socketIo = require('socket.io');
+require('dotenv').config()
+const express = require('express')
+const cors = require('cors')
+const http = require('http')
+const socketIo = require('socket.io')
 
-// 🔗 Sequelize (una sola instancia) y modelos
-const sequelize = require('./src/config/database');   
-require('./src/models/Role');                        
-require('./src/models/User');                        
+// 🔗 Sequelize y modelos (no toco esto)
+const sequelize = require('./src/config/database')
+require('./src/models/Role')
+require('./src/models/User')
 
 // Rutas
-const userRoutes = require('./src/routes');       // /api/users
-const roleRoutes = require('./src/roleRoutes');   // /api/roles
+const userRoutes = require('./src/routes')        // /api/users
+const roleRoutes = require('./src/roleRoutes')    // /api/roles
 
-const app = express();
-const port = process.env.PORT || 5000;
+const app = express()
 
-// Servidor HTTP para Socket.io
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['*'],
-    credentials: true,
-  },
-});
+// 👇 Usa el PORT que da Railway
+const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000
 
-// Middlewares
-app.use(cors());
-app.use(express.json());
+// 🔒 Orígenes permitidos (ajusta tu dominio real si tienes frontend en producción)
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  // 'https://TU-FRONTEND-PROD.com',
+]
+
+// CORS para REST
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  methods: ['GET','POST','PUT','DELETE','PATCH','OPTIONS'],
+  credentials: true,
+}))
+
+app.use(express.json())
+
+// Health root (algunos proxies hacen GET /)
+app.get('/', (_req, res) => res.send('OK'))
 
 // Rutas API
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
+app.use('/api/users', userRoutes)
+app.use('/api/roles', roleRoutes)
 
 // Endpoints de salud / prueba
-app.get('/api/ping', (_req, res) => res.json({ ok: true, message: 'pong' }));
+app.get('/api/ping', (_req, res) => res.json({ ok: true, message: 'pong' }))
 app.get('/api/db-check', async (_req, res) => {
   try {
-    const [rows] = await sequelize.query('SELECT NOW() AS now');
-    res.json({ ok: true, dbTime: rows[0].now });
+    const [rows] = await sequelize.query('SELECT NOW() AS now')
+    res.json({ ok: true, dbTime: rows[0].now })
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message })
   }
-});
+})
+
+// Servidor HTTP para Socket.io
+const server = http.createServer(app)
+
+// CORS para Socket.IO (importante que coincida con REST)
+const io = socketIo(server, {
+  cors: {
+    origin: ALLOWED_ORIGINS,
+    methods: ['GET','POST'],
+    credentials: true,
+  },
+  // path: '/socket.io', // por defecto ya es /socket.io
+  transports: ['websocket','polling'], // deja ambos; el cliente puede forzar 'websocket'
+})
 
 // ---- Socket.io ----
-let rooms = {};
+let rooms = {}
 
 io.on('connection', (socket) => {
-  console.log('Un cliente se ha conectado');
+  console.log('🔌 socket connected', socket.id)
 
   socket.on('joinRoom', (roomName) => {
-    console.log(`Cliente se ha unido a la sala: ${roomName}`);
-    if (!rooms[roomName]) rooms[roomName] = 0;
-    rooms[roomName] += 1;
+    if (!rooms[roomName]) rooms[roomName] = 0
+    rooms[roomName] += 1
+    socket.join(roomName)
+    io.to(roomName).emit('message', `Un nuevo usuario se ha unido a la sala: ${roomName}`)
+    io.emit('activeRooms', Object.keys(rooms))
+    socket.emit('joinRoom', `Te has unido correctamente a la sala: ${roomName}`)
+  })
 
-    socket.join(roomName);
-
-    io.to(roomName).emit('message', `Un nuevo usuario se ha unido a la sala: ${roomName}`);
-    io.emit('activeRooms', Object.keys(rooms));
-    socket.emit('joinRoom', `Te has unido correctamente a la sala: ${roomName}`);
-  });
-
-  // Broadcast de shapes
   socket.on('shapeChange', ({ roomName, shapes }) => {
-    socket.to(roomName).emit('receiveShapes', { shapes });
-  });
+    socket.to(roomName).emit('receiveShapes', { shapes })
+  })
 
-  // Broadcast de código generado
   socket.on('codeGenerated', ({ roomName, htmlCode, cssCode }) => {
-    socket.to(roomName).emit('receiveCode', { htmlCode, cssCode });
-  });
+    socket.to(roomName).emit('receiveCode', { htmlCode, cssCode })
+  })
 
   socket.on('disconnect', () => {
-    console.log('Un cliente se ha desconectado');
     for (const roomName in rooms) {
-      if (rooms[roomName] > 0) rooms[roomName] -= 1;
+      if (rooms[roomName] > 0) rooms[roomName] -= 1
     }
-    io.emit('activeRooms', Object.keys(rooms));
-  });
-});
+    io.emit('activeRooms', Object.keys(rooms))
+  })
+})
 
-// ---- Arranque: autenticar y sincronizar BD UNA sola vez ----
-(async () => {
+// ---- Arranque ----
+;(async () => {
   try {
-    await sequelize.authenticate();
-    console.log('✅ Conexión a PostgreSQL OK');
+    await sequelize.authenticate()
+    console.log('✅ Conexión a PostgreSQL OK')
 
-    // En desarrollo puedes usar { alter: true }. Si tuviste errores de duplicados, usa simple.
-    await sequelize.sync();
-    console.log('✅ Tablas sincronizadas');
+    await sequelize.sync()
+    console.log('✅ Tablas sincronizadas')
 
-    server.listen(port, () => {
-      console.log(`Servidor corriendo en http://localhost:${port}`);
-      console.log(`Healthcheck DB:   http://localhost:${port}/api/db-check`);
-      console.log(`Healthcheck ping: http://localhost:${port}/api/ping`);
-    });
+    // Escucha en 0.0.0.0 para que Railway exponga correctamente
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 API escuchando en puerto ${PORT}`)
+    })
   } catch (err) {
-    console.error('❌ Error al iniciar (DB):', err.message);
-    process.exit(1);
+    console.error('❌ Error al iniciar (DB):', err.message)
+    process.exit(1)
   }
-})();
+})()
