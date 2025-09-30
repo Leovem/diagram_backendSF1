@@ -78,24 +78,35 @@ io.on('connection', (socket) => {
     socket.join(roomName)
     io.to(roomName).emit('message', `Un nuevo usuario se ha unido a la sala: ${roomName}`)
     io.emit('activeRooms', Object.keys(rooms))
-    socket.emit('joinRoom', `Te has unido correctamente a la sala: ${roomName}`)
+    socket.emit('joinedRoom', `Te has unido correctamente a la sala: ${roomName}`)
   })
 
-  socket.on('shapeChange', ({ roomName, shapes }) => {
-    socket.to(roomName).emit('receiveShapes', { shapes })
+  // ⬇️ acepta { roomName, upserts, deletes }
+  socket.on('shapeChange', ({ roomName, upserts = [], deletes = [] }) => {
+    const payload = { from: socket.id, ts: Date.now(), upserts, deletes }
+    socket.to(roomName).volatile.emit('receiveShapes', payload)
   })
 
   socket.on('codeGenerated', ({ roomName, htmlCode, cssCode }) => {
     socket.to(roomName).emit('receiveCode', { htmlCode, cssCode })
   })
 
-  socket.on('disconnect', () => {
-    for (const roomName in rooms) {
-      if (rooms[roomName] > 0) rooms[roomName] -= 1
+  socket.on('disconnecting', () => {
+    for (const roomName of socket.rooms) {
+      if (roomName === socket.id) continue
+      if (rooms[roomName]) {
+        rooms[roomName] -= 1
+        if (rooms[roomName] <= 0) delete rooms[roomName]
+      }
     }
     io.emit('activeRooms', Object.keys(rooms))
   })
+
+  socket.on('disconnect', () => {
+    console.log('❌ disconnected', socket.id)
+  })
 })
+
 
 // ---- Arranque ----
 ;(async () => {
