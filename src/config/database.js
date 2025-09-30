@@ -3,12 +3,12 @@ const { Sequelize } = require('sequelize');
 
 
 const sequelize = new Sequelize(
-  'diagramBD',   
+  'railway',   
   'postgres',         
-  '1256',     
+  'UxgzpCWfElbBeYJmANxSajJmIXzTVpjm',     
   {
-    host: '127.0.0.1', // o 'localhost'
-    port: 5432,
+    host: 'turntable.proxy.rlwy.net', // o 'localhost'
+    port: 52952,
     dialect: 'postgres',
     logging: false,
   }
